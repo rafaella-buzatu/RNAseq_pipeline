@@ -1,2 +1,4 @@
 data/
 results/
+
+utils/__pycache__/
