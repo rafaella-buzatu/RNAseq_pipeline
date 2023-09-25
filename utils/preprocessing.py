@@ -13,6 +13,8 @@ import tqdm
 from collections import defaultdict
 import pandas as pd
 import csv
+import gzip
+import scipy.io
 
 
 
@@ -43,6 +45,7 @@ def doFastQC (pathToFastqFiles, nCores = 40):
     #Send command to console
     subprocess.check_call(command, shell=True)
 
+################ SINGLE CELL
 
 def doCellRangerSC (pathToFastqFiles, pathToRefTranscriptome, expectedCells,
                     nCores=40, nRAM=200):
@@ -62,10 +65,13 @@ def doCellRangerSC (pathToFastqFiles, pathToRefTranscriptome, expectedCells,
     nCores : An int specifying the number of threads to use. Default is 40.
     
     nRAM : An int specifying the amount of RAM memory to use. Default is 200.
+    
+    raw: A boolean spcifying whether to output the path to the folder with the
+    raw or filtered counts.
 
     Returns
     -------
-
+    The path to the folder containing the count matrix elements.
 
     '''
     
@@ -94,9 +100,62 @@ def doCellRangerSC (pathToFastqFiles, pathToRefTranscriptome, expectedCells,
                                 )
     subprocess.check_call(command, shell=True)
 
-    #Move to results folder
+    #Move to data folder
     command ="mv {} {}".format(sampleName, pathToOutputDir)
+    #Define path to the output feature matrix
+    pathToMatrices = os.path.join(pathToOutputDir, sampleName, 'outs', 'filtered_feature_bc_matrix')
     
+    return pathToMatrices
+    
+### COUNT MATRIX PROCESSING
+def extractCountMatrixSC (pathToCellRangerResults, save = True):
+    '''
+    Creates a read count matrix from the cellranger output data.
+
+    Parameters
+    ----------
+    pathToCellRangersResults : A string specifying the path to the folder
+    containing the counts 
+        
+    save: A boolean specifying whether to save the resulting matrix
+
+    Returns
+    -------
+    The read count matrix.
+
+    '''
+   
+    #Read count matrix 
+    matrix = scipy.io.mmread(os.path.join(pathToCellRangerResults, "matrix.mtx.gz"))
+
+    #Define path to features table
+    featuresPath = os.path.join(pathToCellRangerResults, "features.tsv.gz")
+    #Read transcript IDs
+    featureIDs = [row[0] for row in csv.reader(gzip.open(featuresPath, mode="rt"), delimiter="\t")]
+    #Read gene names
+    geneNames = [row[1] for row in csv.reader(gzip.open(featuresPath, mode="rt"), delimiter="\t")]
+    #Read feature types 
+    featureTypes = [row[2] for row in csv.reader(gzip.open(featuresPath, mode="rt"), delimiter="\t")]
+    
+    #Read barcodes
+    barcodesPath = os.path.join(pathToCellRangerResults, "barcodes.tsv.gz")
+    barcodes = [row[0] for row in csv.reader(gzip.open(barcodesPath, mode="rt"), delimiter="\t")]
+    
+    # transform table to pandas dataframe and label rows and columns
+    countMatrix = pd.DataFrame.sparse.from_spmatrix(matrix)
+    countMatrix.columns = barcodes
+    countMatrix.insert(loc=0, column="feature_id", value=featureIDs)
+    countMatrix.insert(loc=0, column="gene", value=geneNames)
+    countMatrix.insert(loc=0, column="feature_type", value=featureTypes)
+
+    # save the count matrix as a csv
+    if (save):
+        pathToResults = pathToCellRangerResults.split('cellranger')[0]
+        countMatrix.to_csv(pathToResults + "countMatrix.csv", index=False)
+    
+    return countMatrix
+
+############ BULK
 
 def bulkPreprocessing (pathToFastqFiles, pathToRefAdapters, pathToRefPhix, 
                        trimQuality = 30, minLen = 30, nRAM= 200):
@@ -397,20 +456,19 @@ def runSTARaligner (pathToProcessed, pathToGenomeDir, nCores = 40):
     return pathToOutputDir
 
 ### COUNT MATRIX PROCESSING
-def extractCountMatrix (pathToAlignment):
+def extractCountMatrixBulk (pathToAlignment):
     '''
-    
+    Extracts the necessary data and creates a count matrix based on the results
+    of the alignment.
 
     Parameters
     ----------
-    pathToAlignment : TYPE
-        DESCRIPTION.
+    pathToAlignment : A string specifying the path to the folder created by
+    the STAR aligner.
 
     Returns
     -------
-    countMatrixDF : TYPE
-        DESCRIPTION.
-
+    The extracted count matrix.
     '''
 
     #Get filenames of count matrices

@@ -8,28 +8,21 @@ Created on Wed Sep 20 11:19:40 2023
 
 import os
 import utils.preprocessing as prep
+import sys
+import pandas as pd
+import scanpy as sc
+sc.settings.set_figure_params(dpi=100, facecolor='white')
+
 
 #Initialize global variables
 nCores = 40 # max 40
 nRAM = 100 # max 200
 
-#FASTQC
-pathToFastqFiles = 'data/Sample_MUC30433/raw'
-prep.doFastQC (pathToFastqFiles, nCores)
-
-
-### Single cell
-
-#CELLRANGER 
-pathToFastqFiles = 'data/Sample_MUC30433/raw'
-pathToRefTranscriptome = 'data/resources/refdata-gex-GRCh38-2020-A'
-expectCells = 10000
-prep.doCellRangerSC (pathToFastqFiles, pathToRefTranscriptome, expectCells,
-                     nCores=40, nRAM=200)
-
-####  BULK
 
 pathToFastqFiles = 'data/bulk_RNAseq/raw'
+
+#FASTQC
+prep.doFastQC (pathToFastqFiles, nCores)
 
 #Quality control
 pathToRefAdapters = 'data/resources/adapters.fa'
@@ -58,5 +51,16 @@ prep.createGenomeIndices (pathToGenomeReference, pathToAnnotations, pathToGenome
 pathToAlignment = prep.runSTARaligner (pathToProcessed, pathToGenomeDir, nCores = 40)
 
 #Extract count matrix after alignment
-countMatrix = prep.extractCountMatrix (pathToAlignment)
+countMatrix = prep.extractCountMatrixBulk (pathToAlignment)
 
+#Read count matrix from file
+#pathToCountMatrix = pathToFastqFiles.split('raw')[0]+'countMatrix.csv'
+#countMatrix = pd.read_csv(pathToCountMatrix, index_col = 0)
+
+#Read count matrix into AnnData object
+adata= sc.AnnData(countMatrix.T)
+
+#Plot highest expression genes
+#sc.pl.highest_expr_genes(adata, n_top=20 )
+
+#Basic filtering of cells with 
