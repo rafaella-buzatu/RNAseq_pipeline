@@ -15,6 +15,9 @@ import pandas as pd
 import csv
 import gzip
 import scipy.io
+import scanpy as sc
+sc.settings.set_figure_params(dpi=100, facecolor='white')
+
 
 
 
@@ -242,8 +245,6 @@ def doAdapterTrim(pathToInput, pathToOutput, sample, pathToRefAdapters, nRAM ):
     containing the adapter sequences.
         
     nRAM : An int specifying the amount of RAM memory to use.
-@ERR862690.15583333 HS21_14478:5:1214:19704:JIGGIIIJJJIIIIIJJIIIJHDBBACCDCCC9ACDDDDDDDDDDD:<C@CADDEE
-
     Returns
     -------
     Nothing is returned. The processed files are saved in the pathToOutput directory.
@@ -505,3 +506,79 @@ def extractCountMatrixBulk (pathToAlignment):
     countMatrixDF.to_csv(pathToAlignment.split('STARaligner')[0] +'countMatrix.csv')
 
     return countMatrixDF
+
+##### SCANPY
+
+def filter (adata, minGenesFilter = 200, minCellsFilter = 3, 
+            maxCountsFilter = 2500, mitCountsFilter = 5):
+    '''
+    Performs filtering of the count matrix
+
+    Parameters
+    ----------
+    adata : An AnnData object to filter
+    
+    minGenesFilter : An int specifying the min amount of genes a cell should 
+    have expression values for to not be filtered out. The default is 200.
+    
+    minCellsFilter : An int specifying the min amount of cells in which a gene
+    should be expressed to not be filtered out.The default is 3.
+    
+    maxCountsFilter : An int specifying the max number of gene counts a cell
+    should have to not be filtered out. The default is 2500 for single cell.
+    Should be removed for bulk.
+    
+    mitCountsFilter : An int specifying the max amount of mitochondrial genes a
+    cell should express to not be filtered out. The default is 5.
+
+    Returns
+    -------
+    The filtered AnnData object.
+    '''
+    
+    #Basic filtering of cells with less than 200 genes 
+    sc.pp.filter_cells(adata, min_genes=minGenesFilter)
+    #Basic filtering of genes expressed in less than 3 cells
+    sc.pp.filter_genes(adata, min_cells= minCellsFilter)
+    
+    #Annotate mitochondiral genes
+    adata.var['mt'] = adata.var_names.str.startswith('MT-')
+    #Calculate qc metrics 
+    sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
+    
+    #Remove cells with too many mitochondrial genes -> leakage cytoplasmic mRNA
+    adata = adata[adata.obs.pct_counts_mt < mitCountsFilter, :]
+    #Remove cells with too many total counts -> doublets
+    if (maxCountsFilter is not None):
+        adata = adata[adata.obs.n_genes_by_counts < maxCountsFilter, :]
+    
+    return adata
+
+
+def normalize (adata):
+    '''
+    Normalize input AnnData count matrix.
+    '''
+    
+    #Scale raw counts by 10000 and log(x+1) transform
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    #Set the raw 
+    adata.raw = adata
+    
+    return adata
+
+def highlyVarGenes (adata, plot = False):
+    '''
+    Filters out the genes that are not highly variable
+
+
+    '''
+    #Find highly variable genes
+    sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
+    if (plot):
+        sc.pl.highly_variable_genes(adata)
+    #Keep only highly variable genes
+    adata = adata[:, adata.var.highly_variable]
+
+    return adata

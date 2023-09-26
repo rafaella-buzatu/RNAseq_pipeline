@@ -54,13 +54,16 @@ pathToAlignment = prep.runSTARaligner (pathToProcessed, pathToGenomeDir, nCores 
 countMatrix = prep.extractCountMatrixBulk (pathToAlignment)
 
 #Read count matrix from file
-#pathToCountMatrix = pathToFastqFiles.split('raw')[0]+'countMatrix.csv'
-#countMatrix = pd.read_csv(pathToCountMatrix, index_col = 0)
+pathToCountMatrix = pathToFastqFiles.split('raw')[0]+'countMatrix.csv'
+countMatrix = pd.read_csv(pathToCountMatrix, index_col = 0)
 
 #Read count matrix into AnnData object
 adata= sc.AnnData(countMatrix.T)
 
-#Plot highest expression genes
-#sc.pl.highest_expr_genes(adata, n_top=20 )
+#Basic filtering
+adata = prep.filter (adata, minCellsFilter = 1, maxCountsFilter = None)
+#Normalize
+adata = prep.normalize(adata)
+#Keep only highly variable
+adata = prep.highlyVarGenes(adata)
 
-#Basic filtering of cells with 

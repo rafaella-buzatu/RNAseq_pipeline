@@ -28,9 +28,22 @@ expectCells = 10000
 pathToCellRangerResults = prep.doCellRangerSC (pathToFastqFiles, pathToRefTranscriptome, 
                                                 expectCells, nCores=40, nRAM=200)
 
-
+#pathToCellRangerResults = pathToFastqFiles.split('raw')[0]+'cellranger/MUC30433/outs/filtered_feature_bc_matrix'
 #Load into scanpy AnnData object
 adata = sc.read_10x_mtx(pathToCellRangerResults, var_names='gene_symbols')
 
-#Plot highest expression genes
-sc.pl.highest_expr_genes(adata, n_top=20 )
+#Basic filtering
+adata = prep.filter (adata)
+
+#Normalize
+adata = prep.normalize(adata)
+#Keep only highly variable
+adata = prep.highlyVarGenes(adata)
+#ComBat batch correction
+sc.pp.combat(adata)
+adata.corrected = adata
+
+
+#PCA
+sc.tl.pca(adata, svd_solver='arpack')
+sc.pl.pca(adata, color='CST3')
