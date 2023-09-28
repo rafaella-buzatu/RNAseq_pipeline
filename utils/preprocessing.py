@@ -509,8 +509,8 @@ def extractCountMatrixBulk (pathToAlignment):
 
 ##### SCANPY
 
-def filter (adata, minGenesFilter = 200, minCellsFilter = 3, 
-            maxCountsFilter = 2500, mitCountsFilter = 5):
+def filterData (adata, minGenesFilter = 200, minCellsFilter = 3, 
+                maxCountsFilter = 2500, mitCountsFilter = 5):
     '''
     Performs filtering of the count matrix
 
@@ -528,8 +528,8 @@ def filter (adata, minGenesFilter = 200, minCellsFilter = 3,
     should have to not be filtered out. The default is 2500 for single cell.
     Should be removed for bulk.
     
-    mitCountsFilter : An int specifying the max amount of mitochondrial genes a
-    cell should express to not be filtered out. The default is 5.
+    mitCountsFilter : An int specifying the max percentage of mitochondrial genes 
+    a cell should express to not be filtered out. The default is 5.
 
     Returns
     -------
@@ -546,11 +546,14 @@ def filter (adata, minGenesFilter = 200, minCellsFilter = 3,
     #Calculate qc metrics 
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
     
+    #n_genes_by_counts = no genes that had any counts in a cell -> obs
+    #n_cells_by_counts = no cells that had a gene -> var
+    #pct_counts_mt = percentage of mitochondrial gene counts from total counts -> obs
+    
     #Remove cells with too many mitochondrial genes -> leakage cytoplasmic mRNA
     adata = adata[adata.obs.pct_counts_mt < mitCountsFilter, :]
     #Remove cells with too many total counts -> doublets
-    if (maxCountsFilter is not None):
-        adata = adata[adata.obs.n_genes_by_counts < maxCountsFilter, :]
+    adata = adata[adata.obs.n_genes_by_counts < maxCountsFilter, :]
     
     return adata
 
@@ -560,10 +563,11 @@ def normalize (adata):
     Normalize input AnnData count matrix.
     '''
     
-    #Scale raw counts by 10000 and log(x+1) transform
+    #Scale raw counts by 10000-> counts will add up to 10000 
     sc.pp.normalize_total(adata, target_sum=1e4)
+    #log(x+1) transform the counts
     sc.pp.log1p(adata)
-    #Set the raw 
+    #Save the data into the 'raw' slot
     adata.raw = adata
     
     return adata
@@ -571,7 +575,6 @@ def normalize (adata):
 def highlyVarGenes (adata, plot = False):
     '''
     Filters out the genes that are not highly variable
-
 
     '''
     #Find highly variable genes
@@ -581,4 +584,37 @@ def highlyVarGenes (adata, plot = False):
     #Keep only highly variable genes
     adata = adata[:, adata.var.highly_variable]
 
+    return adata
+
+def correction(adata, regressTotalCounts = False, regressCellCycle = False,
+               pathToCellCycleGenes = None, regressMit=False):
+    
+    listOfEffectsToRegress = []
+    
+    if (regressTotalCounts):
+        #regress out total cell count effects 
+        listOfEffectsToRegress.extend(['total_counts'])
+    if(regressCellCycle):
+        #regress out cell cycle effects after calciulating cell cycle scores
+        adata = scoreCellCycleGenes (adata, pathToCellCycleGenes)
+        listOfEffectsToRegress.extend(['S_score', 'G2M_score'])
+    if(regressMit):
+        #regress out mitochondrial gene effects
+        listOfEffectsToRegress.extend(['pct_counts_mt'])
+        
+    sc.pp.regress_out(adata,listOfEffectsToRegress)
+    
+    #Save in object
+    adata.corrected = adata
+    
+    return adata
+
+def scoreCellCycleGenes (adata, pathToCellCycleGenes):
+    
+    cell_cycle_genes = [x.strip() for x in open(pathToCellCycleGenes)]
+    s_genes = cell_cycle_genes[:43]
+    g2m_genes = cell_cycle_genes[43:]
+    cell_cycle_genes = [x for x in cell_cycle_genes if x in adata.var_names]
+    sc.tl.score_genes_cell_cycle(adata, s_genes=s_genes, g2m_genes=g2m_genes)
+    
     return adata

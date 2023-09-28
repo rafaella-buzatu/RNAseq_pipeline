@@ -52,18 +52,11 @@ pathToAlignment = prep.runSTARaligner (pathToProcessed, pathToGenomeDir, nCores 
 
 #Extract count matrix after alignment
 countMatrix = prep.extractCountMatrixBulk (pathToAlignment)
-
 #Read count matrix from file
+
 pathToCountMatrix = pathToFastqFiles.split('raw')[0]+'countMatrix.csv'
 countMatrix = pd.read_csv(pathToCountMatrix, index_col = 0)
 
 #Read count matrix into AnnData object
 adata= sc.AnnData(countMatrix.T)
-
-#Basic filtering
-adata = prep.filter (adata, minCellsFilter = 1, maxCountsFilter = None)
-#Normalize
-adata = prep.normalize(adata)
-#Keep only highly variable
-adata = prep.highlyVarGenes(adata)
 

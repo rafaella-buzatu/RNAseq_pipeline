@@ -2,3 +2,5 @@ data/
 results/
 
 utils/__pycache__/
+
+scType.R
